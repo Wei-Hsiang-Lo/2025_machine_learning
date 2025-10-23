@@ -14,11 +14,19 @@ class ClassificationModel(nn.Module):
     def __init__(self):
         super(ClassificationModel, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(2, 16),
+            nn.Linear(2, 64),
             nn.ReLU(),
-            nn.Linear(16, 32),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(32, 1),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
         )
     def forward(self, x):
         return self.network(x)
@@ -28,14 +36,19 @@ class ClassificationModel(nn.Module):
 # =========================
 def train_and_evaluate(model, train_loader, val_loader, epochs, learning_rate):
     criterion = nn.BCEWithLogitsLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+    
     history = {'train_loss': [], 'val_loss': [], 'val_auc':[]}
+    best_val_loss = float('inf')
+    patience = 10
+    counter = 0
 
     for epoch in range(epochs):
-        # switch to training mode, updating parameters
         model.train()
         running_loss = 0.0
         for features, labels in train_loader:
+            features, labels = features, labels
             optimizer.zero_grad()
             outputs = model(features).squeeze()
             loss = criterion(outputs, labels)
@@ -46,27 +59,43 @@ def train_and_evaluate(model, train_loader, val_loader, epochs, learning_rate):
         epoch_train_loss = running_loss / len(train_loader.dataset)
         history['train_loss'].append(epoch_train_loss)
 
-        # switch to evaluation mode, not updating parameters
+        # validation
         model.eval()
         val_running_loss = 0.0
-        all_val_labels = []
-        all_val_preds = []
+        all_val_labels, all_val_preds = [], []
 
         with torch.no_grad():
             for features, labels in val_loader:
+                features, labels = features, labels
                 outputs = model(features).squeeze()
                 loss = criterion(outputs, labels)
                 val_running_loss += loss.item() * features.size(0)
-                all_val_labels.extend(labels.numpy())
-                all_val_preds.extend(outputs.numpy())
+                all_val_labels.append(labels)
+                all_val_preds.append(outputs)
 
+        val_labels_tensor = torch.cat(all_val_labels)
+        val_preds_tensor = torch.cat(all_val_preds)
         epoch_val_loss = val_running_loss / len(val_loader.dataset)
-        epoch_val_auc = roc_auc_score(all_val_labels, all_val_preds)
+        epoch_val_auc = roc_auc_score(val_labels_tensor.cpu(), val_preds_tensor.cpu())
 
         history['val_loss'].append(epoch_val_loss)
         history['val_auc'].append(epoch_val_auc)
+        
+        # 調整 learning rate
+        scheduler.step(epoch_val_loss)
 
-        print (f"Epoch {epoch+1:02d}/{epochs:02d} - " f"Train Loss: {epoch_train_loss:.4f} | ", f"Val Loss: {epoch_val_loss:.4f} | ", f"Val AUC: {epoch_val_auc:.4f}")
+        # early stopping
+        if epoch_val_loss < best_val_loss:
+            best_val_loss = epoch_val_loss
+            counter = 0
+            torch.save(model.state_dict(), 'best_model.pth')
+        else:
+            counter += 1
+            if counter >= patience:
+                print("Early stopping triggered")
+                break
+
+        print (f"Epoch {epoch+1:02d}/{epochs:02d} - Train Loss: {epoch_train_loss:.4f} | Val Loss: {epoch_val_loss:.4f} | Val AUC: {epoch_val_auc:.4f}")
     return history
 
 # Plotting history
@@ -110,12 +139,12 @@ if __name__ == "__main__":
     # =========================
     # Load datasets
     # =========================
-    df_class = pd.read_csv("classification_dataset.csv")
+    df_class = pd.read_csv("C:\\Users\\user\\2025_machine_learning\\Week_4\\classification_dataset.csv")
     x = df_class[['Longitude', 'Latitude']].values.astype(np.float32)
     y = df_class['Class'].values.astype(np.float32)
 
-    features = torch.tensor(x, dtype=torch.float32)
-    labels = torch.tensor(y, dtype=torch.float32)
+    X_orig = features = torch.tensor(x, dtype=torch.float32)
+    Y_orig = labels = torch.tensor(y, dtype=torch.float32)
 
     # =========================
     # 標準化 features (經緯度)
@@ -153,26 +182,27 @@ if __name__ == "__main__":
     X = features.numpy()
     y = labels.numpy()
 
+    X_np, y_np = X_orig.cpu().numpy(), Y_orig.cpu().numpy()
+    plt.figure(figsize=(8, 6))
+    
     # 散點圖
-    plt.figure(figsize=(8,6))
-    plt.scatter(X[y==1,0], X[y==1,1], color='blue', label='Valid (1)', alpha=0.6, s=5)
-    plt.scatter(X[y==0,0], X[y==0,1], color='silver', label='Invalid (0)', alpha=0.6, s=5)
-
-    # 畫分類邊界
-    # 先建立一個經緯度的網格
-    x_min, x_max = X[:,0].min() - 0.5, X[:,0].max() + 0.5
-    y_min, y_max = X[:,1].min() - 0.5, X[:,1].max() + 0.5
-    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 200), np.linspace(y_min, y_max, 200))
-
-    # 將網格丟進模型
-    grid = torch.tensor(np.c_[xx.ravel(), yy.ravel()], dtype=torch.float32)
+    plt.scatter(X_np[y_np == 1, 0], X_np[y_np == 1, 1], color='CadetBlue', label='Valid (1)', alpha=0.6, s=5)
+    plt.scatter(X_np[y_np == 0, 0], X_np[y_np == 0, 1], color='silver', label='Invalid (0)', alpha=0.6, s=5)
+    
+    # 建立原始經緯度網格
+    xmin, xmax = X_np[:,0].min() - 0.5, X_np[:,0].max() + 0.5
+    ymin, ymax = X_np[:,1].min() - 0.5, X_np[:,1].max() + 0.5
+    gx, gy = np.linspace(xmin, xmax, 200), np.linspace(ymin, ymax, 200)
+    GX, GY = np.meshgrid(gx, gy)
+    
+    # 將網格標準化後送入模型
+    grid_orig = np.column_stack([GX.ravel(), GY.ravel()])
+    grid_tensor = torch.tensor((grid_orig - mu.numpy()) / sigma.numpy(), dtype=torch.float32)
     with torch.no_grad():
-        logits = model(grid)
-        probs = torch.sigmoid(logits).numpy().reshape(xx.shape)
-
-    # 畫出 decision boundary (prob = 0.5)
-    plt.contour(xx, yy, probs, levels=[0.5], colors='black', linewidths=2, linestyles='dashed')
-
+        probs = torch.sigmoid(model(grid_tensor)).numpy().reshape(GX.shape)
+    
+    # 畫 decision boundary
+    plt.contour(GX, GY, probs, levels=[0.4], colors='black', linewidths=2, linestyles='dashed')
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
     plt.title('Valid vs Invalid Classification with Decision Boundary')

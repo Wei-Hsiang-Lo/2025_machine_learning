@@ -12,11 +12,19 @@ class RegressionModel(nn.Module):
     def __init__(self):
         super(RegressionModel, self).__init__()
         self.network = nn.Sequential(
-            nn.Linear(2, 16),
+            nn.Linear(2, 64),
             nn.ReLU(),
-            nn.Linear(16, 16),
+            nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(16, 1),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
         )
 
     def forward(self, x):
@@ -147,7 +155,7 @@ if __name__ == "__main__":
     # =========================
     # Load datasets
     # =========================
-    df_class = pd.read_csv("regression_dataset.csv")
+    df_class = pd.read_csv("C:\\Users\\user\\2025_machine_learning\\Week_4\\regression_dataset.csv")
     x = df_class[['Longitude', 'Latitude']].values.astype(np.float32)
     y = df_class['Value'].values.astype(np.float32)
 
@@ -188,7 +196,7 @@ if __name__ == "__main__":
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
     model = RegressionModel()
-    history = train_and_evaluate(model, train_loader, val_loader, 50, 0.001)
+    history = train_and_evaluate(model, train_loader, val_loader, 500, 0.0001)
     plot_history(history, values_sigma.item())
     evaluate_model_test_set(model, test_loader, values_mu.item(), values_sigma.item())
 

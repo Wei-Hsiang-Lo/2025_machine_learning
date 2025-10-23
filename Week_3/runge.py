@@ -1,9 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Runge function
-def runge(x):
-    return 1 / (1 + 25 * x**2)
+# Runge_prime function
+def runge_prime(x):
+    return -50 * x / (1 + 25 * x**2)**2
 
 # Activation function and its derivative
 def tanh(x):
@@ -82,7 +82,7 @@ def update_params_adam(params, grads, m, v, t, lr=0.001, beta1=0.9, beta2=0.999,
 # Data
 N = 100
 x = np.linspace(-1, 1, N).reshape(-1,1)
-y = runge(x)
+y = runge_prime(x)
 
 # Split manually
 idx = np.arange(N)
@@ -141,11 +141,11 @@ print(f"Test MSE: {test_loss:.6f}")
 x_dense = np.linspace(-1,1,500).reshape(-1,1)
 y_dense_pred,_ = forward(x_dense, *params)
 
-plt.plot(x_dense, runge(x_dense), label="True Runge")
+plt.plot(x_dense, runge_prime(x_dense), label="True Runge_prime")
 plt.plot(x_dense, y_dense_pred, label="Neural Network Approximation")
 plt.scatter(x_train, y_train, s=10, c="gray", alpha=0.5, label="Training data")
 plt.legend()
-plt.title("Runge Function Approximation")
+plt.title("Runge_prime Function Approximation")
 plt.show()
 
 plt.plot(train_losses, label="Training loss")
